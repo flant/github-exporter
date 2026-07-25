@@ -1,0 +1,9 @@
+project: github-exporter
+configVersion: 1
+deploy:
+  namespace: '[[ project ]]-[[ env ]]'
+  helmRelease: '[[ project ]]-[[ env ]]'
+
+---
+image: github-exporter
+dockerfile: Dockerfile
