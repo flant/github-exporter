@@ -1,0 +1,54 @@
+# Default values for the github-exporter chart.
+
+replicaCount: 1
+
+image:
+  # When deployed with werf, the tag is injected via werf_container_image.
+  # For plain `helm install`, set repository and tag explicitly.
+  repository: ""
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# GitHub App / exporter configuration.
+# All of these map to the exporter's environment variables.
+config:
+  appId: ""            # APP_ID
+  installationId: ""   # INSTALLATION_ID
+  org: ""              # GITHUB_ORG
+  githubApiUrl: ""     # GITHUB_API_URL (optional, for GitHub Enterprise Server)
+  scrapeTimeout: "30s" # SCRAPE_TIMEOUT
+  listenAddress: ":9101"
+  metricsPath: "/metrics"
+
+# GitHub App private key (PEM).
+privateKey:
+  # If set, a Secret is created from this value and mounted at mountPath.
+  # Leave empty and set existingSecret to use a pre-created Secret instead.
+  value: ""
+  existingSecret: ""       # name of an existing Secret containing the key
+  existingSecretKey: "private-key.pem"
+  mountPath: "/etc/github-exporter"
+
+service:
+  type: ClusterIP
+  port: 9101
+
+resources:
+  requests:
+    cpu: 20m
+    memory: 32Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+# Prometheus Operator ServiceMonitor.
+serviceMonitor:
+  enabled: false
+  interval: 60s
+  scrapeTimeout: 30s
+  # Extra labels for the ServiceMonitor (e.g. to match a Prometheus selector).
+  labels: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

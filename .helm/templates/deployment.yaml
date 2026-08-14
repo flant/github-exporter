@@ -1,0 +1,93 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "github-exporter.name" . }}
+  labels:
+    {{- include "github-exporter.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "github-exporter.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "github-exporter.selectorLabels" . | nindent 8 }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: github-exporter
+{{- if and .Values.werf (not .Values.werf.is_stub) }}
+          image: {{ index .Values.werf.image "github-exporter" }}
+{{- else }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+{{- end }}
+          ports:
+            - name: metrics
+              containerPort: 9101
+          env:
+            - name: LISTEN_ADDRESS
+              value: {{ .Values.config.listenAddress | quote }}
+            - name: METRICS_PATH
+              value: {{ .Values.config.metricsPath | quote }}
+            - name: APP_ID
+              value: {{ .Values.config.appId | quote }}
+            - name: INSTALLATION_ID
+              value: {{ .Values.config.installationId | quote }}
+            - name: GITHUB_ORG
+              value: {{ .Values.config.org | quote }}
+            - name: SCRAPE_TIMEOUT
+              value: {{ .Values.config.scrapeTimeout | quote }}
+{{- if .Values.config.githubApiUrl }}
+            - name: GITHUB_API_URL
+              value: {{ .Values.config.githubApiUrl | quote }}
+{{- end }}
+            - name: PRIVATE_KEY
+              value: {{ printf "%s/%s" .Values.privateKey.mountPath (include "github-exporter.privateKeySecretKey" .) | quote }}
+          volumeMounts:
+            - name: private-key
+              mountPath: {{ .Values.privateKey.mountPath | quote }}
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: metrics
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: metrics
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: private-key
+          secret:
+            secretName: {{ include "github-exporter.privateKeySecret" . }}
+            items:
+              - key: {{ include "github-exporter.privateKeySecretKey" . }}
+                path: {{ include "github-exporter.privateKeySecretKey" . }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
