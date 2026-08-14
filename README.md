@@ -1,8 +1,12 @@
 # github-exporter
 
 Prometheus exporter for GitHub **self-hosted Actions runners**, authenticated as
-a **GitHub App** installation. On every Prometheus scrape it queries the GitHub
-API for the organization's runners and exposes their state.
+a [GitHub App](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/registering-a-github-app) installation.
+
+A background poller refreshes the organization's runner state from the GitHub
+API every `POLL_INTERVAL` and caches it. Prometheus scrapes are served from that
+cache, so GitHub API load stays constant no matter how many Prometheus replicas
+scrape the exporter.
 
 ## Metrics
 
@@ -13,7 +17,7 @@ API for the organization's runners and exposes their state.
 | `github_runners_total` | gauge | `org` | Total number of registered runners |
 | `github_runners_online_total` | gauge | `org` | Number of online runners |
 | `github_runners_busy_total` | gauge | `org` | Number of busy runners |
-| `github_scrape_success` | gauge | `org` | `1` if the last GitHub API scrape succeeded, else `0` |
+| `github_scrape_success` | gauge | `org` | `1` if the last GitHub API poll succeeded, else `0` |
 
 > The number of **free** runners (a proxy for spare queue capacity) can be
 > derived in PromQL as `github_runners_online_total - github_runners_busy_total`.
@@ -33,7 +37,8 @@ All settings come from environment variables.
 | `LISTEN_ADDRESS` | no | `:9101` | HTTP listen address |
 | `METRICS_PATH` | no | `/metrics` | Metrics endpoint path |
 | `GITHUB_API_URL` | no | public github.com | API base URL for GitHub Enterprise Server |
-| `SCRAPE_TIMEOUT` | no | `30s` | Per-scrape timeout for the GitHub API (Go duration) |
+| `SCRAPE_TIMEOUT` | no | `30s` | Timeout for a single GitHub API request (Go duration) |
+| `POLL_INTERVAL` | no | `30s` | How often the background poller refreshes runner state (Go duration) |
 
 The GitHub App needs the **Self-hosted runners: Read-only** organization
 permission.
@@ -41,8 +46,29 @@ permission.
 ## Endpoints
 
 - `GET /metrics` — Prometheus metrics
-- `GET /healthz` — liveness/readiness probe
+- `GET /healthz` — liveness probe: `200` while the process is alive
+- `GET /readyz` — readiness probe: `200` once runner state has been fetched
+  successfully, `503` (with the reason) before the first successful poll or after
+  a failed one
 - `GET /` — landing page
+
+### Kubernetes probes
+
+A GitHub API outage makes the exporter **not ready** (it has no fresh runner
+data to serve) but still **alive** — restarting the pod would not fix an
+upstream outage, so only the readiness probe fails.
+
+```yaml
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: 9101
+readinessProbe:
+  httpGet:
+    path: /readyz
+    port: 9101
+  periodSeconds: 10
+```
 
 ## Running
 

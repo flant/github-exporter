@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -14,7 +15,9 @@ import (
 
 	"github.com/flant/github-exporter/internal/agent"
 	"github.com/flant/github-exporter/internal/config"
+	"github.com/flant/github-exporter/internal/health"
 	"github.com/flant/github-exporter/internal/metrics"
+	"github.com/flant/github-exporter/internal/poller"
 	"github.com/flant/github-exporter/internal/router"
 	"github.com/flant/github-exporter/internal/server"
 )
@@ -39,6 +42,8 @@ func run(log *slog.Logger) error {
 		"installation_id", cfg.InstallationID,
 		"listen", cfg.ListenAddr,
 		"metrics_path", cfg.MetricsPath,
+		"poll_interval", cfg.PollInterval,
+		"scrape_timeout", cfg.ScrapeTimeout,
 	)
 
 	gh, err := agent.New(cfg.AppID, cfg.InstallationID, cfg.PrivateKeyPath, cfg.Org, cfg.APIBaseURL)
@@ -46,10 +51,14 @@ func run(log *slog.Logger) error {
 		return err
 	}
 
-	scrapeCtx := func(parent context.Context) (context.Context, context.CancelFunc) {
+	// pollCtx bounds a single GitHub API request made by the poller.
+	pollCtx := func(parent context.Context) (context.Context, context.CancelFunc) {
 		return context.WithTimeout(parent, cfg.ScrapeTimeout)
 	}
-	collector := metrics.New(cfg.Org, gh, scrapeCtx, log)
+
+	healthState := health.New()
+	p := poller.New(gh, healthState, cfg.PollInterval, pollCtx, log)
+	collector := metrics.New(cfg.Org, p, log)
 
 	reg := prometheus.NewRegistry()
 	reg.MustRegister(
@@ -58,11 +67,23 @@ func run(log *slog.Logger) error {
 		collector,
 	)
 
-	handler := router.New(reg, cfg.MetricsPath)
+	handler := router.New(reg, cfg.MetricsPath, healthState)
 	srv := server.New(cfg.ListenAddr, handler, log)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	return srv.Run(ctx)
+	// The poller owns all GitHub API traffic; it stops when ctx is cancelled.
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_ = p.Run(ctx)
+	}()
+
+	err = srv.Run(ctx)
+
+	stop() // stop listening for signals, then unblock the poller
+	wg.Wait()
+	return err
 }

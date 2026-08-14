@@ -1,9 +1,8 @@
-// Package metrics implements a prometheus.Collector that scrapes GitHub
-// self-hosted runner state on demand.
+// Package metrics implements a prometheus.Collector that exposes GitHub
+// self-hosted runner state from the poller's cached snapshot.
 package metrics
 
 import (
-	"context"
 	"log/slog"
 	"strconv"
 
@@ -12,19 +11,20 @@ import (
 	"github.com/flant/github-exporter/internal/agent"
 )
 
-// runnerLister is the behavior the collector needs from the GitHub client.
-type runnerLister interface {
-	ListRunners(ctx context.Context) ([]agent.Runner, error)
+// runnerSource provides the most recent runner snapshot. It is satisfied by
+// *poller.Poller; a non-nil error means the last poll failed, so the snapshot
+// must not be exposed.
+type runnerSource interface {
+	Runners() ([]agent.Runner, error)
 }
 
 // Collector gathers runner metrics for a single organization. It implements
-// prometheus.Collector and queries GitHub each time Prometheus scrapes it, so
-// the exposed values always reflect the latest known state.
+// prometheus.Collector and reads the snapshot maintained by the background
+// poller, so a Prometheus scrape never hits the GitHub API itself.
 type Collector struct {
-	org     string
-	client  runnerLister
-	timeout timeoutFunc
-	log     *slog.Logger
+	org    string
+	source runnerSource
+	log    *slog.Logger
 
 	// Descriptors.
 	runnerStatus *prometheus.Desc
@@ -35,18 +35,13 @@ type Collector struct {
 	scrapeOK     *prometheus.Desc
 }
 
-// timeoutFunc derives a per-scrape context. It is a field so tests can inject a
-// plain context.Background without a real deadline.
-type timeoutFunc func(parent context.Context) (context.Context, context.CancelFunc)
-
-// New builds a Collector. scrapeCtx wraps each scrape with a timeout.
-func New(org string, client runnerLister, scrapeCtx timeoutFunc, log *slog.Logger) *Collector {
+// New builds a Collector reading runner state from src.
+func New(org string, src runnerSource, log *slog.Logger) *Collector {
 	labels := []string{"runner", "name", "os"}
 	return &Collector{
-		org:     org,
-		client:  client,
-		timeout: scrapeCtx,
-		log:     log,
+		org:    org,
+		source: src,
+		log:    log,
 		runnerStatus: prometheus.NewDesc(
 			"github_runner_status",
 			"Runner connectivity: 1 if the runner is online, 0 otherwise.",
@@ -74,7 +69,7 @@ func New(org string, client runnerLister, scrapeCtx timeoutFunc, log *slog.Logge
 		),
 		scrapeOK: prometheus.NewDesc(
 			"github_scrape_success",
-			"1 if the last scrape of the GitHub API succeeded, 0 otherwise.",
+			"1 if the last poll of the GitHub API succeeded, 0 otherwise.",
 			nil, prometheus.Labels{"org": org},
 		),
 	}
@@ -90,14 +85,12 @@ func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.scrapeOK
 }
 
-// Collect implements prometheus.Collector. It performs a live scrape.
+// Collect implements prometheus.Collector. It reads the poller's latest
+// snapshot; the readiness state is owned by the poller, not updated here.
 func (c *Collector) Collect(ch chan<- prometheus.Metric) {
-	ctx, cancel := c.timeout(context.Background())
-	defer cancel()
-
-	runners, err := c.client.ListRunners(ctx)
+	runners, err := c.source.Runners()
 	if err != nil {
-		c.log.Error("scrape failed", "org", c.org, "err", err)
+		c.log.Warn("serving metrics without runner data", "org", c.org, "err", err)
 		ch <- prometheus.MustNewConstMetric(c.scrapeOK, prometheus.GaugeValue, 0)
 		return
 	}

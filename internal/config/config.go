@@ -26,8 +26,12 @@ type Config struct {
 	// Server). Empty means public github.com.
 	APIBaseURL string
 
-	// ScrapeTimeout bounds a single collection against the GitHub API.
+	// ScrapeTimeout bounds a single request against the GitHub API.
 	ScrapeTimeout time.Duration
+
+	// PollInterval is how often the background poller refreshes runner state
+	// from the GitHub API.
+	PollInterval time.Duration
 }
 
 // Load reads configuration from the environment, applying defaults and
@@ -40,6 +44,7 @@ func Load() (*Config, error) {
 		PrivateKeyPath: os.Getenv("PRIVATE_KEY"),
 		APIBaseURL:     os.Getenv("GITHUB_API_URL"),
 		ScrapeTimeout:  30 * time.Second,
+		PollInterval:   30 * time.Second,
 	}
 
 	var err error
@@ -56,6 +61,14 @@ func Load() (*Config, error) {
 			return nil, fmt.Errorf("invalid SCRAPE_TIMEOUT %q: %w", v, perr)
 		}
 		cfg.ScrapeTimeout = d
+	}
+
+	if v := os.Getenv("POLL_INTERVAL"); v != "" {
+		d, perr := time.ParseDuration(v)
+		if perr != nil {
+			return nil, fmt.Errorf("invalid POLL_INTERVAL %q: %w", v, perr)
+		}
+		cfg.PollInterval = d
 	}
 
 	if err := cfg.validate(); err != nil {
@@ -79,6 +92,9 @@ func (c *Config) validate() error {
 	}
 	if c.Org == "" {
 		return fmt.Errorf("GITHUB_ORG is required")
+	}
+	if c.PollInterval <= 0 {
+		return fmt.Errorf("POLL_INTERVAL must be positive, got %s", c.PollInterval)
 	}
 	return nil
 }

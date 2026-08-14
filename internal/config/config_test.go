@@ -14,6 +14,7 @@ func setEnv(t *testing.T, vars map[string]string) {
 	for _, k := range []string{
 		"APP_ID", "INSTALLATION_ID", "PRIVATE_KEY", "GITHUB_ORG",
 		"LISTEN_ADDRESS", "METRICS_PATH", "GITHUB_API_URL", "SCRAPE_TIMEOUT",
+		"POLL_INTERVAL",
 	} {
 		t.Setenv(k, "")
 	}
@@ -56,6 +57,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.ScrapeTimeout != 30*time.Second {
 		t.Errorf("default ScrapeTimeout = %v", cfg.ScrapeTimeout)
 	}
+	if cfg.PollInterval != 30*time.Second {
+		t.Errorf("default PollInterval = %v", cfg.PollInterval)
+	}
 }
 
 func TestLoadOverrides(t *testing.T) {
@@ -68,6 +72,7 @@ func TestLoadOverrides(t *testing.T) {
 		"LISTEN_ADDRESS":  ":8080",
 		"METRICS_PATH":    "/m",
 		"SCRAPE_TIMEOUT":  "5s",
+		"POLL_INTERVAL":   "15s",
 	})
 
 	cfg, err := Load()
@@ -76,6 +81,23 @@ func TestLoadOverrides(t *testing.T) {
 	}
 	if cfg.ListenAddr != ":8080" || cfg.MetricsPath != "/m" || cfg.ScrapeTimeout != 5*time.Second {
 		t.Errorf("overrides not applied: %+v", cfg)
+	}
+	if cfg.PollInterval != 15*time.Second {
+		t.Errorf("PollInterval override not applied: %v", cfg.PollInterval)
+	}
+}
+
+func TestLoadBadPollInterval(t *testing.T) {
+	key := writeKey(t)
+	setEnv(t, map[string]string{
+		"APP_ID":          "1",
+		"INSTALLATION_ID": "2",
+		"PRIVATE_KEY":     key,
+		"GITHUB_ORG":      "acme",
+		"POLL_INTERVAL":   "notaduration",
+	})
+	if _, err := Load(); err == nil {
+		t.Error("expected error for invalid POLL_INTERVAL")
 	}
 }
 
