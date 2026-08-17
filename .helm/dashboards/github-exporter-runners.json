@@ -145,7 +145,7 @@
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "targets": [
         {
-          "expr": "github_runner_status{org=~\"$org\", namespace=~\"$namespace\"} * (1 + github_runner_busy{org=~\"$org\", namespace=~\"$namespace\"})",
+          "expr": "max by (org, namespace, runner, name, os) (github_runner_status{org=~\"$org\", namespace=~\"$namespace\"} * (1 + github_runner_busy{org=~\"$org\", namespace=~\"$namespace\"}))",
           "legendFormat": "{{name}}",
           "refId": "A"
         }
