@@ -1,20 +1,10 @@
 # Default values for the github-exporter chart.
 
 replicaCount: 1
+sample_limit: 5000
 
-image:
-  # When deployed with werf, the tag is injected via werf_container_image.
-  # For plain `helm install`, set repository and tag explicitly.
-  repository: ""
-  tag: ""
-  pullPolicy: IfNotPresent
-
-# GitHub App / exporter configuration.
-# All of these map to the exporter's environment variables.
 config:
-  appId: ""            # APP_ID
-  installationId: ""   # INSTALLATION_ID
-  org: ""              # GITHUB_ORG
+  org: ""       # GITHUB_ORG
   githubApiUrl: ""     # GITHUB_API_URL (optional, for GitHub Enterprise Server)
   scrapeTimeout: "30s" # SCRAPE_TIMEOUT
   listenAddress: ":9101"
@@ -33,6 +23,9 @@ service:
   type: ClusterIP
   port: 9101
 
+imagePullSecrets:
+  - name: registrysecret
+
 resources:
   requests:
     cpu: 20m
@@ -41,14 +34,20 @@ resources:
     cpu: 200m
     memory: 128Mi
 
-# Prometheus Operator ServiceMonitor.
-serviceMonitor:
-  enabled: false
-  interval: 60s
-  scrapeTimeout: 30s
-  # Extra labels for the ServiceMonitor (e.g. to match a Prometheus selector).
-  labels: {}
-
 nodeSelector: {}
 tolerations: []
 affinity: {}
+
+# Deckhouse Grafana dashboard for the runners.
+dashboard:
+  enabled: true
+  # Also deploy the dashboard as a ClusterObservabilityPropagatedDashboard
+  # (observability.deckhouse.io), in addition to the GrafanaDashboardDefinition.
+  observability: true
+
+# Deckhouse Prometheus alerting rules (CustomPrometheusRules).
+alerts:
+  enabled: true
+  runnersNotAllOnline:
+    for: 5m
+    severity: warning

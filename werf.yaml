@@ -1,9 +1,8 @@
 project: github-exporter
 configVersion: 1
 deploy:
-  namespace: '[[ project ]]-[[ env ]]'
-  helmRelease: '[[ project ]]-[[ env ]]'
-
+  helmRelease: '[[ project ]]'
+  namespace: '[[ project ]]'
 ---
-image: github-exporter
-dockerfile: Dockerfile
+image: github_exporter
+from: ghcr.io/flant/github-exporter:0.0.1

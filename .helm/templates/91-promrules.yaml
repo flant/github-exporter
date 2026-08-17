@@ -1,0 +1,22 @@
+{{- if .Values.alerts.enabled }}
+---
+apiVersion: deckhouse.io/v1
+kind: CustomPrometheusRules
+metadata:
+  name: github-exporter-alerts
+spec:
+  groups:
+    - name: github-exporter.rules
+      rules:
+        - alert: GithubRunnersNotAllOnline
+          expr: github_runners_online_total < github_runners_total
+          for: {{ .Values.alerts.runnersNotAllOnline.for | quote }}
+          labels:
+            severity: {{ .Values.alerts.runnersNotAllOnline.severity | quote }}
+          annotations:
+            summary: Not all GitHub self-hosted runners are online
+            description: >-
+              Organization {{ "{{" }} $labels.org {{ "}}" }}: only {{ "{{" }} $value {{ "}}" }}
+              runner(s) online out of the registered total.
+            plk_markup_format: markdown
+{{- end }}

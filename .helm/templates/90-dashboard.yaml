@@ -1,0 +1,25 @@
+{{- if .Values.dashboard.enabled }}
+{{- $json_config_content := .Files.Get "dashboards/github-exporter-runners.json" }}
+---
+{{- if .Values.dashboard.observability }}
+apiVersion: observability.deckhouse.io/v1alpha1
+kind: ClusterObservabilityPropagatedDashboard
+metadata:
+  name: github-exporter-runners
+  annotations:
+    metadata.deckhouse.io/category: "Applications"
+    metadata.deckhouse.io/title: "GitHub Runners"
+spec:
+  definition: |
+{{ printf "%s" ($json_config_content | replace "github-exporter-runners" "propagated_github-exporter-runners") | indent 4 }}
+---
+{{- end }}
+apiVersion: deckhouse.io/v1
+kind: GrafanaDashboardDefinition
+metadata:
+  name: github-exporter-runners
+spec:
+  folder: Applications
+  definition: |
+{{ $json_config_content | indent 4 }}
+{{- end }}

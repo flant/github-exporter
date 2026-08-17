@@ -1,19 +1,22 @@
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "github-exporter.name" . }}
-  labels:
-    {{- include "github-exporter.labels" . | nindent 4 }}
+  name: github-exporter
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      {{- include "github-exporter.selectorLabels" . | nindent 6 }}
+      app: github-exporter
   template:
     metadata:
       labels:
-        {{- include "github-exporter.selectorLabels" . | nindent 8 }}
+        app: github-exporter
     spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532
@@ -21,12 +24,8 @@ spec:
           type: RuntimeDefault
       containers:
         - name: github-exporter
-{{- if and .Values.werf (not .Values.werf.is_stub) }}
-          image: {{ index .Values.werf.image "github-exporter" }}
-{{- else }}
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
-{{- end }}
+          image: {{ index .Values.werf.image "github_exporter" }}
+          imagePullPolicy: IfNotPresent
           ports:
             - name: metrics
               containerPort: 9101
@@ -91,3 +90,47 @@ spec:
       affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: github-exporter
+  labels:
+    app: admin-api-service
+    prometheus.deckhouse.io/custom-target: github-exporter
+  annotations:
+    prometheus.deckhouse.io/sample-limit: {{ .Values.sample_limit | quote }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    app: github-exporter
+  ports:
+    - name: http-metrics
+      port: {{ .Values.service.port }}
+      targetPort: metrics
+      protocol: TCP
+
+---
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: github-exporter
+spec:
+  targetRef:
+    apiVersion: "apps/v1"
+    kind: Deployment
+    name: github-exporter
+  updatePolicy:
+    updateMode: "Off"
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: github-exporter
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: github-exporter

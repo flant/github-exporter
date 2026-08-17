@@ -1,0 +1,180 @@
+{
+  "title": "GitHub Self-Hosted Runners",
+  "uid": "github-exporter-runners",
+  "schemaVersion": 39,
+  "version": 2,
+  "editable": true,
+  "graphTooltip": 1,
+  "timezone": "browser",
+  "time": { "from": "now-3h", "to": "now" },
+  "refresh": "30s",
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "label": "Datasource",
+        "current": {}
+      },
+      {
+        "name": "org",
+        "type": "query",
+        "label": "Organization",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "query": "label_values(github_runners_total, org)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "current": { "text": "All", "value": "$__all" },
+        "sort": 1
+      },
+      {
+        "name": "namespace",
+        "type": "query",
+        "label": "Namespace",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "query": "label_values(github_runners_total, namespace)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "current": { "text": "All", "value": "$__all" },
+        "sort": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Scrape success",
+      "description": "github_scrape_success: 1 if the last poll of the GitHub API succeeded, 0 otherwise.",
+      "gridPos": { "h": 5, "w": 8, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "expr": "min(github_scrape_success{org=~\"$org\", namespace=~\"$namespace\"})", "legendFormat": "scrape", "refId": "A" }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "textMode": "value",
+        "colorMode": "background"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "OK", "color": "green" } } }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "value": null, "color": "red" }, { "value": 1, "color": "green" }] }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Runners Online",
+      "description": "Share of registered runners currently online (github_runners_online_total / github_runners_total * 100). Green only at 100%.",
+      "gridPos": { "h": 5, "w": 8, "x": 8, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "expr": "100 * sum(github_runners_online_total{org=~\"$org\", namespace=~\"$namespace\"}) / sum(github_runners_total{org=~\"$org\", namespace=~\"$namespace\"})",
+          "legendFormat": "online",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "textMode": "value",
+        "colorMode": "background"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 0,
+          "thresholds": { "mode": "absolute", "steps": [{ "value": null, "color": "red" }, { "value": 100, "color": "green" }] }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Runners busy",
+      "description": "Share of runners currently busy (github_runners_busy_total / github_runners_total). Thresholds are placeholders, tune to taste.",
+      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "expr": "100 * sum(github_runners_busy_total{org=~\"$org\", namespace=~\"$namespace\"}) / sum(github_runners_total{org=~\"$org\", namespace=~\"$namespace\"})",
+          "legendFormat": "busy",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "textMode": "value",
+        "colorMode": "background"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 60, "color": "yellow" },
+              { "value": 90, "color": "red" }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "type": "status-history",
+      "title": "Runner status history",
+      "description": "Per-runner state over time: green = available (online, not busy), yellow = busy, red = unavailable (offline). Computed as github_runner_status * (1 + github_runner_busy).",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "expr": "github_runner_status{org=~\"$org\", namespace=~\"$namespace\"} * (1 + github_runner_busy{org=~\"$org\", namespace=~\"$namespace\"})",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "green" },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": { "text": "unavailable", "color": "red" },
+                "1": { "text": "available", "color": "green" },
+                "2": { "text": "busy", "color": "yellow" }
+              }
+            }
+          ],
+          "custom": { "lineWidth": 0, "fillOpacity": 100 }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showValue": "never",
+        "alignValue": "center",
+        "rowHeight": 0.9,
+        "colWidth": 0.9,
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "single" }
+      }
+    }
+  ]
+}
