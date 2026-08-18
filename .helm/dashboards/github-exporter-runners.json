@@ -2,7 +2,7 @@
   "title": "GitHub Self-Hosted Runners",
   "uid": "github-exporter-runners",
   "schemaVersion": 39,
-  "version": 2,
+  "version": 3,
   "editable": true,
   "graphTooltip": 1,
   "timezone": "browser",
@@ -140,12 +140,14 @@
       "id": 4,
       "type": "status-history",
       "title": "Runner status history",
-      "description": "Per-runner state over time: green = available (online, not busy), yellow = busy, red = unavailable (offline). Computed as github_runner_status * (1 + github_runner_busy).",
+      "description": "Per-runner state over time: green = available (online, not busy), yellow = busy, red = unavailable (offline). Each bucket takes the worst state seen in it: min_over_time(status) makes any offline moment show as unavailable, max_over_time(busy) makes any busy moment show as busy.",
       "gridPos": { "h": 10, "w": 24, "x": 0, "y": 5 },
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "interval": "1m",
+      "maxDataPoints": 200,
       "targets": [
         {
-          "expr": "max by (org, namespace, runner, name, os) (github_runner_status{org=~\"$org\", namespace=~\"$namespace\"} * (1 + github_runner_busy{org=~\"$org\", namespace=~\"$namespace\"}))",
+          "expr": "max by (org, namespace, runner, name, os) (min_over_time(github_runner_status{org=~\"$org\", namespace=~\"$namespace\"}[$__interval]) * (1 + max_over_time(github_runner_busy{org=~\"$org\", namespace=~\"$namespace\"}[$__interval])))",
           "legendFormat": "{{name}}",
           "refId": "A"
         }

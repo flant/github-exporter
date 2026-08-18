@@ -3,6 +3,10 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: github-exporter
+  labels:
+    app: github-exporter
+  annotations:
+    pod-reloader.deckhouse.io/auto: "true"
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
